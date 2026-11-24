@@ -1,33 +1,31 @@
 #!/bin/sh
 set -e
 
-# --- SQLite: create the file if needed ---
-if [ "$DB_CONNECTION" = "sqlite" ]; then
-  DB_FILE="${DB_DATABASE:-/var/www/html/database/database.sqlite}"
-  mkdir -p "$(dirname "$DB_FILE")"
-  touch "$DB_FILE"
-  chown -R www-data:www-data "$(dirname "$DB_FILE")"
+# Wait for MySQL
+if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ]; then
+  echo "ERROR: DB_HOST or DB_PORT is not set"
+  exit 1
 fi
 
-# --- MySQL: wait for the DB ---
-if [ "$DB_CONNECTION" = "mysql" ]; then
-  if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ]; then
-    echo "ERROR: DB_HOST or DB_PORT is not set"; exit 1
+echo "Waiting for database at $DB_HOST:$DB_PORT..."
+TRIES=0
+until nc -z "$DB_HOST" "$DB_PORT"; do
+  TRIES=$((TRIES+1))
+  if [ "$TRIES" -ge 30 ]; then
+    echo "Database unreachable after 30 tries"
+    exit 1
   fi
-  echo "Waiting for database at $DB_HOST:$DB_PORT..."
-  TRIES=0
-  until nc -z "$DB_HOST" "$DB_PORT"; do
-    TRIES=$((TRIES+1))
-    [ "$TRIES" -ge 30 ] && echo "Database unreachable" && exit 1
-    sleep 2
-  done
-fi
+  sleep 2
+done
+echo "Database is up."
 
 php artisan config:clear
 php artisan migrate --force
 
 php-fpm -D
 
-# Use the port that Railway provides
-sed -i "s/listen 10000;/listen ${PORT};/g" /etc/nginx/sites-available/default
+# Railway provides PORT; default 8080
+LISTEN_PORT="${PORT:-8080}"
+sed -i "s/listen 10000;/listen ${LISTEN_PORT};/g" /etc/nginx/sites-available/default
+echo "Starting nginx on port ${LISTEN_PORT}"
 exec nginx -g 'daemon off;'

@@ -11,10 +11,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     curl \
     git \
-    vim \
     libzip-dev \
-    sqlite3 \
-    libsqlite3-dev \
     netcat-openbsd \
     nginx \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
@@ -32,24 +29,15 @@ RUN composer install --no-dev --no-interaction --optimize-autoloader --no-script
 # Copy project files
 COPY . .
 
-# Run composer scripts now that the full code is present
 RUN composer dump-autoload --optimize \
     && (php artisan package:discover --ansi || true)
 
 # Nginx config
 COPY nginx.conf /etc/nginx/sites-available/default
 
-# Wait-for-db script
-COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
-RUN chmod +x /usr/local/bin/wait-for-db.sh
+# Startup script (fix Windows line endings just in case)
+COPY start.sh /usr/local/bin/start.sh
+RUN sed -i 's/\r$//' /usr/local/bin/start.sh && chmod +x /usr/local/bin/start.sh
 
-# Permissions (after vendor/ exists)
-RUN mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache \
-    && chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
-
-ENV PORT=10000
-EXPOSE 10000
-
-CMD ["sh", "-c", "/usr/local/bin/wait-for-db.sh && php artisan config:clear && php artisan migrate --force && php-fpm -D && sed -i \"s/listen 10000;/listen ${PORT};/g\" /etc/nginx/sites-available/default && nginx -g 'daemon off;'"]
+# Permissions
+RUN mkdir -p storage/framework/cache storage/framework/sessions
