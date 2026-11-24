@@ -321,7 +321,10 @@
         .cc-row.total span:last-child { font-size: 22px; color: var(--c-price); }
         .cc-row.change span:last-child { color: var(--c-cash-dark); }
         .cc-row.change.insufficient span:last-child { color: var(--c-danger); }
-
+        .customer-pick { margin-bottom: 12px; }
+        .customer-pick label { font-size: 11px; font-weight: 600; color: var(--c-faint); text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+        .customer-pick select { width: 100%; padding: 9px 12px; border: 1px solid var(--c-border); border-radius: 24px; font-size: 13px; font-family: 'DM Sans', sans-serif; background: var(--c-surface); color: var(--c-text); outline: none; }
+        .customer-pick select:focus { border-color: var(--c-primary); }
         /* ── TOAST ── */
         .toast {
             position: fixed; top: calc(var(--h-height, 64px) + 8px); right: 28px;
@@ -647,6 +650,7 @@
                 border-top: 1px solid var(--c-line);
                 flex-shrink: 0;
                 background: var(--c-surface);
+                overflow-y: auto;
             }
 
             .khqr-modal {
@@ -961,6 +965,7 @@
             <p style="margin-bottom:16px;">Please review the order before confirming.</p>
 
             <div class="cc-rows">
+                <div class="cc-row"><span>Customer</span><span id="ccCustomer">Walk-in</span></div>
                 <div class="cc-row"><span>Items</span><span id="ccItems">0</span></div>
                 <div class="cc-row"><span>Payment</span><span id="ccMethod">Bank</span></div>
                 <div class="cc-row" id="ccGivenRow" style="display:none;"><span>Cash received</span><span id="ccGiven">$0.00</span></div>
@@ -1015,11 +1020,6 @@
                 </div>
 
                 <div id="productGrid">
-                    @php
-                        $grouped = $products
-                            ->filter(fn($p) => $p->add_to_pos == 1)
-                            ->groupBy(fn($p) => $p->category->name ?? 'N/A');
-                    @endphp
                     @forelse($grouped as $categoryName => $items)
                         <div class="category-group" data-category="{{ strtolower($categoryName) }}">
                             <div class="category-heading">{{ $categoryName }}</div>
@@ -1099,7 +1099,23 @@
                     <input type="hidden" name="total"          id="posTotalInput">
                     <input type="hidden" name="payment_method" id="posPaymentMethod" value="khqr">
                     <input type="hidden" name="cash_given"     id="posCashGiven" value="">
+                    <input type="hidden" name="customer_id"    id="posCustomerId" value="">
 
+                    {{-- Customer (loyalty) — desktop --}}
+                    <div class="customer-pick" style="margin-top:14px;">
+                        <label for="posCustomerSearch"><i class="fas fa-mug-hot"></i> Customer (loyalty)</label>
+                        <input type="text" id="posCustomerSearch" list="customerList"
+                            placeholder="Walk-in — search name / phone..."
+                            autocomplete="off"
+                            style="width:100%;padding:9px 14px;border:1px solid var(--c-border);border-radius:24px;font-size:13px;"
+                            oninput="pickCustomerByText(this.value)">
+                    </div>
+                    
+                    <datalist id="customerList">
+                        @foreach ($customers as $c)
+                            <option value="{{ $c->name }} · {{ $c->phone }}" data-id="{{ $c->id }}"></option>
+                        @endforeach
+                    </datalist>
                     {{-- Payment method toggle --}}
                     <div class="pay-method-row" style="margin-top:14px;">
                         <button type="button" class="pay-method-btn active-khqr" id="btnPayKhqr" onclick="setPayMethod('khqr')">
@@ -1199,6 +1215,17 @@
                     <span id="drawerDiscountAmount" style="color:var(--c-success);">-$0.00</span>
                 </div>
                 <div class="summary-row total"><span>Total</span><span id="drawerGrandTotal">$0.00</span></div>
+            </div>
+
+            {{-- Customer (loyalty) — mobile drawer --}}
+            <div class="customer-pick">
+                <label for="drawerCustomer"><i class="fas fa-mug-hot"></i> Customer (loyalty)</label>
+                <select id="drawerCustomer" onchange="syncCustomer(this.value)">
+                    <option value="">Walk-in (no card)</option>
+                    @foreach ($customers as $c)
+                        <option value="{{ $c->id }}">{{ $c->name }} · {{ $c->phone }}</option>
+                    @endforeach
+                </select>
             </div>
 
             {{-- Payment method --}}
@@ -1310,6 +1337,8 @@
             let startY = 0, isDragging = false;
 
             drawer.addEventListener('touchstart', function(e) {
+                // don't start a swipe from the customer <select> or inputs
+                if (e.target.closest('select, input')) return;
                 const body = drawer.querySelector('.cart-drawer-body');
                 if (body && body.scrollTop > 0) return; // don't close if scrolled
                 startY = e.touches[0].clientY;
@@ -1470,6 +1499,54 @@
             showToast(`"${card.dataset.name}" added to cart.`, 'success');
             pendingCard = null;
         }
+
+        /* ─────────────────────────────────────────────
+           CUSTOMER (loyalty) — keeps the desktop select,
+           the drawer select and the hidden form field in sync
+        ───────────────────────────────────────────── */
+        function pickCustomerByText(text) {
+            const opt = [...document.querySelectorAll('#customerList option')]
+                .find(o => o.value === text);
+            syncCustomer(opt ? opt.dataset.id : '');
+        }
+
+        function syncCustomer(val) {
+            val = val || '';
+            document.getElementById('posCustomerId').value = val;
+
+            const opt = val
+                ? document.querySelector(`#customerList option[data-id="${val}"]`)
+                : null;
+            const label = opt ? opt.value : '';
+
+            ['posCustomerSearch', 'drawerCustomerSearch'].forEach(id => {
+                const el = document.getElementById(id);
+                // កុំរំខានអ្វីដែលអ្នកកំពុងវាយ លុះត្រាតែជ្រើសរើសបានត្រឹមត្រូវ ឬ reset
+                if (el && (val || document.activeElement !== el)) el.value = label;
+            });
+        }
+
+        function getCustomerLabel() {
+            const id = document.getElementById('posCustomerId').value;
+            if (!id) return 'Walk-in';
+            const opt = document.querySelector(`#customerList option[data-id="${id}"]`);
+            return opt ? opt.value : 'Walk-in';
+        }
+
+        /* ─────────────────────────────────────────────
+           SUCCESS MODAL
+        ───────────────────────────────────────────── */
+        function closeSuccessModal() {
+            document.getElementById('checkoutSuccessModal').style.display = 'none';
+            cart = {};
+            syncCustomer('');
+            renderCart();
+        }
+
+        @if(session('pos_success'))
+        document.getElementById('checkoutSummaryText').textContent = '{{ session('pos_success') }}';
+        document.getElementById('checkoutSuccessModal').style.display = 'flex';
+        @endif
 
         function closeAddToCartModal() {
             document.getElementById('addToCartModal').style.display = 'none';
@@ -1754,20 +1831,6 @@
         document.getElementById('posSearch').addEventListener('input', filterProducts);
 
         /* ─────────────────────────────────────────────
-           SUCCESS MODAL
-        ───────────────────────────────────────────── */
-        function closeSuccessModal() {
-            document.getElementById('checkoutSuccessModal').style.display = 'none';
-            cart = {};
-            renderCart();
-        }
-
-        @if(session('pos_success'))
-        document.getElementById('checkoutSummaryText').textContent = '{{ session('pos_success') }}';
-        document.getElementById('checkoutSuccessModal').style.display = 'flex';
-        @endif
-
-        /* ─────────────────────────────────────────────
            PAYMENT METHOD TOGGLE — DESKTOP
         ───────────────────────────────────────────── */
         function setPayMethod(method) {
@@ -1930,9 +1993,10 @@
             document.getElementById('ccConfirmBtn').disabled = false;
 
             const itemCount = Object.values(cart).reduce((s, i) => s + i.qty, 0);
-            document.getElementById('ccItems').textContent  = itemCount;
-            document.getElementById('ccMethod').textContent = method === 'cash' ? 'Cash' : 'Bank (KHQR)';
-            document.getElementById('ccTotal').textContent  = `$${total.toFixed(2)}`;
+            document.getElementById('ccItems').textContent    = itemCount;
+            document.getElementById('ccMethod').textContent   = method === 'cash' ? 'Cash' : 'Bank (KHQR)';
+            document.getElementById('ccTotal').textContent    = `$${total.toFixed(2)}`;
+            document.getElementById('ccCustomer').textContent = getCustomerLabel();
 
             const givenRow  = document.getElementById('ccGivenRow');
             const changeRow = document.getElementById('ccChangeRow');
@@ -2311,12 +2375,9 @@
         });
 
         /* ─────────────────────────────────────────────
-           HIDE FAB WHEN CART IS EMPTY
+           RESIZE: close the drawer when going back to desktop
         ───────────────────────────────────────────── */
-        // FAB is always visible on mobile even when empty, but disabled
-        // Optionally show/hide based on breakpoint resize
         window.addEventListener('resize', function() {
-            // Sync drawer state if switching from mobile back to desktop
             if (!isMobileTablet()) {
                 closeCartDrawer();
             }

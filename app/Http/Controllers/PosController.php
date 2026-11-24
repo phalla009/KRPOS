@@ -2,228 +2,190 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Product;
+use App\Services\TelegramNotifier;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Services\TelegramNotifier;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PosController extends Controller
 {
     /** Allowed sugar levels (whitelist) */
     private const SUGAR_LEVELS = ['0%', '25%', '50%', '75%', '100%'];
 
-    /**
-     * Show the POS page.
-     * Only show products that are active AND marked as Add to POS.
-     */
+    /* ─────────────────────────────────────────────
+       POS SCREEN
+       Route: GET /pos  (name: pos.index)
+    ───────────────────────────────────────────── */
     public function index()
     {
-        $products = Product::with(['images', 'category'])
-            ->where('add_to_pos', 1)
+        $products = Product::with(['category', 'images'])
+            ->where('status', 'active')
             ->get();
 
-        return view('pos.index', compact('products'));
+        $customers = Customer::orderBy('name')->get(['id', 'name', 'phone', 'status']);
+
+        return view('pos.index', compact('products', 'customers'));
     }
 
-    /**
-     * Process the POS checkout.
-     * Saves each cart item as a separate Order row, matching OrderController pattern.
-     */
+    /* ─────────────────────────────────────────────
+       CUSTOMER DISPLAY (second screen)
+       Route: GET /pos/display  (name: pos.display)
+    ───────────────────────────────────────────── */
+    public function display()
+    {
+        return view('pages.pos.display');
+    }
+
+    /* ─────────────────────────────────────────────
+       CHECKOUT
+       Route: POST /pos/checkout  (name: pos.checkout)
+    ───────────────────────────────────────────── */
     public function checkout(Request $request)
     {
         $request->validate([
-            'items'          => 'required|string',
-            'total'          => 'required|numeric|min:0',
-            'payment_method' => 'nullable|in:cash,khqr',
+            'items'          => 'required|json',
+            'payment_method' => 'required|in:khqr,cash',
+            'cash_given'     => 'nullable|numeric|min:0',
+            'customer_id'    => 'nullable|exists:customers,id', // empty = Walk-in
         ]);
 
         $items = json_decode($request->input('items'), true);
 
-        if (empty($items) || !is_array($items)) {
-            return redirect()->route('pos.index')->withErrors(['items' => 'Cart is empty.']);
+        if (!is_array($items) || empty($items)) {
+            return back()->withErrors(['items' => 'Cart is empty.']);
         }
 
-        $paymentMethod = $request->input('payment_method');
+        $customerId    = $request->filled('customer_id') ? (int) $request->customer_id : null;
+        $paymentMethod = $request->payment_method;
         $cashGiven     = (float) $request->input('cash_given', 0);
+        $posRef        = 'POS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
 
-        $posRef = 'POS-' . strtoupper(substr(uniqid(), -6)) . '-' . now()->format('His');
+        try {
+            $result = DB::transaction(function () use ($items, $customerId, $paymentMethod, $cashGiven, $posRef) {
 
-        $savedCount = 0;
-        $totalSaved = 0;
-        $errors     = [];
-        $orderIds   = [];
-
-        DB::transaction(function () use ($items, $posRef, $paymentMethod, &$savedCount, &$totalSaved, &$errors, &$orderIds) {
-
-            foreach ($items as $item) {
-
-                $productId = $item['id']       ?? null;
-                $qty       = (int)($item['qty']    ?? 1);
-                $discount  = $item['discount']     ?? '0';
-
-                // ✅ Sugar level (optional). Only accept known values.
-                $sugar = trim((string) ($item['sugar'] ?? ''));
-                if (!in_array($sugar, self::SUGAR_LEVELS, true)) {
-                    $sugar = '';
+                // ── 1) Lock products + validate stock (sum per product) ──
+                $needed = [];
+                foreach ($items as $row) {
+                    $pid          = (int) ($row['id'] ?? 0);
+                    $needed[$pid] = ($needed[$pid] ?? 0) + max(1, (int) ($row['qty'] ?? 1));
                 }
 
-                if (!$productId || $qty < 1) continue;
-
-                $product = Product::find($productId);
-
-                if (!$product) {
-                    $errors[] = "Product ID {$productId} not found.";
-                    continue;
-                }
-
-                if (!$product->add_to_pos) {
-                    $errors[] = "\"{$product->name}\" is not available in POS.";
-                    continue;
-                }
-
-                if ($product->stock < $qty) {
-                    $errors[] = "Insufficient stock for \"{$product->name}\" (available: {$product->stock}).";
-                    continue;
-                }
-
-                // Always use the price from the DATABASE, not from the request
-                $price     = (float) $product->price;
-                $lineTotal = $price * $qty;
-
-                // Apply discount
-                if ($discount !== '0' && $discount !== '') {
-                    if (str_contains($discount, '%')) {
-                        $pct       = (float) $discount;
-                        $lineTotal -= $lineTotal * ($pct / 100);
-                    } elseif (str_contains($discount, '$')) {
-                        // Flat discount applied once per line, not multiplied by qty
-                        $flat      = (float) $discount;
-                        $lineTotal -= $flat;
-                    }
-                    if ($lineTotal < 0) $lineTotal = 0;
-                }
-
-                // Generate order number
-                $lastOrder   = Order::where('order_number', 'like', 'ORD-KR%')
-                    ->orderBy('id', 'desc')
+                $products = Product::whereIn('id', array_keys($needed))
                     ->lockForUpdate()
-                    ->first();
-                $newNumber   = $lastOrder ? intval(substr($lastOrder->order_number, 6)) + 1 : 1;
-                $orderNumber = 'ORD-KR' . str_pad($newNumber, 3, '0', STR_PAD_LEFT);
+                    ->get()
+                    ->keyBy('id');
 
-                // ✅ Build the note from parts: ref · discount · sugar
-                $noteParts = ["POS sale · ref: {$posRef}"];
-                if ($discount !== '0' && $discount !== '') {
-                    $noteParts[] = "discount: {$discount}";
+                foreach ($needed as $pid => $qty) {
+                    $product = $products->get($pid);
+
+                    if (!$product || $product->status !== 'active') {
+                        throw new \RuntimeException('A product in the cart is no longer available.');
+                    }
+                    if ($product->stock < $qty) {
+                        throw new \RuntimeException("Not enough stock for \"{$product->name}\" (available: {$product->stock}).");
+                    }
                 }
-                if ($sugar !== '') {
-                    $noteParts[] = "sugar: {$sugar}";
+
+                // ── 2) Compute server-side total (never trust browser prices) ──
+                $lines      = [];
+                $grandTotal = 0;
+
+                foreach ($items as $row) {
+                    $product = $products->get((int) $row['id']);
+                    $qty     = max(1, (int) ($row['qty'] ?? 1));
+
+                    // whitelist discount: "0", "10%", "$2"
+                    $discount = (string) ($row['discount'] ?? '0');
+                    if (!preg_match('/^(0|\d{1,3}(\.\d+)?%|\$\d+(\.\d+)?)$/', $discount)) {
+                        $discount = '0';
+                    }
+
+                    // whitelist sugar
+                    $sugar = (string) ($row['sugar'] ?? '100%');
+                    if (!in_array($sugar, self::SUGAR_LEVELS, true)) {
+                        $sugar = '100%';
+                    }
+
+                    $lineTotal   = $this->applyDiscount((float) $product->price * $qty, $discount);
+                    $grandTotal += $lineTotal;
+
+                    $lines[] = compact('product', 'qty', 'discount', 'sugar', 'lineTotal');
                 }
 
-                $order = Order::create([
-                    'order_number'   => $orderNumber,
-                    'customer_id'    => null,
-                    'product_id'     => $product->id,
-                    'quantity'       => $qty,
-                    'total_amount'   => round($lineTotal, 2),
-                    'status'         => 'completed',
-                    'order_date'     => now()->toDateString(),
-                    'payment_method' => $paymentMethod,
-                    'note'           => implode(' · ', $noteParts),
-                    'pos_ref'        => $posRef,
-                ]);
+                $grandTotal = round($grandTotal, 2);
 
-                $orderIds[] = $order->id;
+                // ── 3) Cash validation ──
+                if ($paymentMethod === 'cash' && $cashGiven + 0.001 < $grandTotal) {
+                    throw new \RuntimeException('Cash given is less than the total amount.');
+                }
 
-                // Deduct stock
-                $product->stock -= $qty;
-                $product->save();
+                // ── 4) Create one order row per cart line (share pos_ref) ──
+                $orderNo  = $this->nextOrderNumberStart();
+                $orderIds = [];
 
-                $savedCount++;
-                $totalSaved += $lineTotal;
-            }
-        });
+                foreach ($lines as $line) {
+                    $order = Order::create([
+                        'order_number'   => 'ORD-KR' . str_pad($orderNo++, 3, '0', STR_PAD_LEFT),
+                        'pos_ref'        => $posRef,
+                        'customer_id'    => $customerId,
+                        'product_id'     => $line['product']->id,
+                        'quantity'       => $line['qty'],
+                        'total_amount'   => $line['lineTotal'],
+                        'status'         => 'completed',
+                        'payment_method' => $paymentMethod,
+                        'order_date'     => now(),
+                        'note'           => 'POS sale · ref: ' . $posRef
+                                          . ' · sugar: ' . $line['sugar']
+                                          . ' · discount: ' . $line['discount'],
+                    ]);
 
-        if ($savedCount === 0) {
+                    $orderIds[] = $order->id;
+
+                    Payment::create([
+                        'order_id'       => $order->id,
+                        'amount'         => $line['lineTotal'],
+                        'payment_method' => $paymentMethod,
+                        'paid_at'        => now(),
+                    ]);
+                }
+
+                // ── 5) Deduct stock ──
+                foreach ($needed as $pid => $qty) {
+                    $products->get($pid)->decrement('stock', $qty);
+                }
+
+                return [
+                    'total'    => $grandTotal,
+                    'lines'    => $lines,
+                    'orderIds' => $orderIds,
+                ];
+            });
+        } catch (\Throwable $e) {
+            Log::warning('POS checkout failed: ' . $e->getMessage());
+
             return redirect()->route('pos.index')
-                ->withErrors($errors)
+                ->withErrors(['checkout' => $e->getMessage()])
                 ->withInput();
         }
-        // ---- Telegram alert ----
-        $orders = Order::with('product')->whereIn('id', $orderIds)->orderBy('id')->get();
 
-// Today's checkout sequence (this checkout is already saved, so it counts itself)
-        $seq = Order::whereDate('order_date', now()->toDateString())
-            ->whereNotNull('pos_ref')
-            ->distinct()
-            ->count('pos_ref');
+        $grandTotal = $result['total'];
+        $lines      = $result['lines'];
+        $orderIds   = $result['orderIds'];
 
-        $invoice = 'N' . now()->format('Ymd') . '-' . str_pad($seq, 3, '0', STR_PAD_LEFT);
-        $line    = '━━━━━━━━━━━━━━━━━━';
+        // ── Telegram alert (after commit; must never break checkout) ──
+        $this->notifyTelegram($lines, $grandTotal, $paymentMethod, $cashGiven, $customerId);
 
-        $subtotal = 0;
-        $itemsText = '';
+        $message = 'Order placed successfully! Total: $' . number_format($grandTotal, 2);
 
-        foreach ($orders as $o) {
-            $unit = (float) optional($o->product)->price;
-            $subtotal += $unit * $o->quantity;
-
-            $itemsText .= "• " . e(optional($o->product)->name ?? 'Item') . " x{$o->quantity}\n";
-
-            if (preg_match('/sugar:\s*(\d+%)/u', (string) $o->note, $m)) {
-                $itemsText .= "🍬 ស្ករ: {$m[1]}\n";
-            }
-
-            $itemsText .= "💵 តម្លៃ: $" . number_format($unit, 2) . "\n";
-            $itemsText .= "💰 សរុប: $" . number_format($o->total_amount, 2) . "\n\n";
-        }
-
-        $total    = (float) $orders->sum('total_amount');
-        $discount = max(0, round($subtotal - $total, 2));
-        $totalKhr = round(($total * 4000) / 100) * 100;
-
-        $payLabel = match ($paymentMethod) {
-            'cash'  => 'Cash',
-            'khqr'  => 'Bank',
-            default => '-',
-        };
-        $paidLabel = $paymentMethod === 'cash' ? 'Cash' : 'Non-cash';
-
-        $msg  = "🧾 <b>NEW ORDER RECEIVED</b>\n";
-        $msg .= "{$line}\n";
-        $msg .= "<b>INVOICE: {$invoice}</b>\n";
-        $msg .= "{$line}\n";
-        $msg .= "🔢 <b>Order No: {$seq}</b>\n";
-        $msg .= "{$line}\n";
-        $msg .= $itemsText;
-        $msg .= "{$line}\n";
-        $msg .= "💵 Subtotal: $" . number_format($subtotal, 2) . "\n";
-        $msg .= "🏷️ Discount: $" . number_format($discount, 2) . "\n";
-        $msg .= "💰 Grand Total: $" . number_format($total, 2) . "\n";
-        $msg .= "🇰🇭 Grand Total (KHR): ៛" . number_format($totalKhr) . "\n";
-        $msg .= "💳 Payment: {$payLabel}\n";
-        $msg .= "💳 Paid: {$paidLabel}\n";
-
-        if ($paymentMethod === 'cash' && $cashGiven > 0) {
-            $msg .= "💵 Cash given: $" . number_format($cashGiven, 2) . "\n";
-            $msg .= "🔁 Change: $" . number_format(max(0, $cashGiven - $total), 2) . "\n";
-        }
-
-        $msg .= "{$line}\n";
-        $msg .= "🕒 " . now()->format('d/m/Y h:i A');
-
-        if (!empty($errors)) {
-            $msg .= "\n⚠️ Skipped: " . e(implode('; ', $errors));
-        }
-
-        TelegramNotifier::send($msg);
-
-        $message = "{$savedCount} item(s) saved · Total: $" . number_format($totalSaved, 2);
-
-        if (!empty($errors)) {
-            $message .= ' · ' . count($errors) . ' item(s) skipped due to stock issues.';
+        if ($customerId) {
+            $customer = Customer::find($customerId);
+            $message .= ' · Customer: ' . ($customer->name ?? '');
         }
 
         return redirect()->route('pos.index')
@@ -232,12 +194,10 @@ class PosController extends Controller
             ->with('pos_cash_given', $cashGiven);
     }
 
-    /**
-     * Combined PDF receipt (80mm) for the orders created by ONE checkout.
-     * URL:  /pos/receipt?ids=12,13,14&cash=5.00
-     *   ids  = order IDs from the checkout (required)
-     *   cash = cash received (optional, only used for cash payments)
-     */
+    /* ─────────────────────────────────────────────
+       RECEIPT (80mm PDF) for ONE checkout
+       URL: /pos/receipt?ids=12,13,14&cash=5.00
+    ───────────────────────────────────────────── */
     public function receipt(Request $request)
     {
         $ids = collect(explode(',', (string) $request->query('ids', '')))
@@ -257,14 +217,11 @@ class PosController extends Controller
 
         $first = $orders->first();
 
-        // One receipt line per order row
         $items = $orders->map(function ($o) {
-            $unit = (float) optional($o->product)->price;
-
-            // Collect notes saved in the order note: discount + sugar
+            $unit  = (float) optional($o->product)->price;
             $notes = [];
 
-            if (preg_match('/discount:\s*([^\s·]+)/u', (string) $o->note, $m)) {
+            if (preg_match('/discount:\s*([^\s·]+)/u', (string) $o->note, $m) && $m[1] !== '0') {
                 $notes[] = 'Discount ' . $m[1];
             }
             if (preg_match('/sugar:\s*(\d+%)/u', (string) $o->note, $m)) {
@@ -311,16 +268,243 @@ class PosController extends Controller
             + ($discount > 0 ? 28 : 0)
             + ($paymentMethod === 'cash' && $cashGiven > 0 ? 40 : 0);
 
-        $pdf      = Pdf::loadView('pos.receipt', $data) ->setPaper([0, 0, 226.77, $height], 'portrait');
+        $pdf = Pdf::loadView('pos.receipt', $data)
+            ->setPaper([0, 0, 226.77, $height], 'portrait');
 
-        // កំណត់ Path របស់ Font ឱ្យ DomPDF ស្គាល់
+        // Font paths for Khmer
         $pdf->getDomPDF()->set_option('fontDir', storage_path('fonts/'));
         $pdf->getDomPDF()->set_option('fontCache', storage_path('fonts/'));
         $pdf->getDomPDF()->set_option('defaultFont', 'Khmer OS Battambang');
+
         $filename = 'receipt-' . $data['ref'] . '.pdf';
 
         return $request->boolean('download')
             ? $pdf->download($filename)
             : $pdf->stream($filename);
+    }
+
+    /* ─────────────────────────────────────────────
+       KHQR — GENERATE
+       Route: POST /pos/khqr/generate  (name: pos.khqr.generate)
+    ───────────────────────────────────────────── */
+    public function generateKhqr(Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+        ]);
+
+        $accountId = env('BAKONG_MERCHANT_ID');
+        $name      = env('BAKONG_MERCHANT_NAME', 'My Shop');
+        $city      = env('BAKONG_MERCHANT_CITY', 'Phnom Penh');
+
+        if (!$accountId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'BAKONG_MERCHANT_ID is not configured.',
+            ], 500);
+        }
+
+        $amount    = number_format((float) $request->amount, 2, '.', '');
+        $createdMs = (int) round(microtime(true) * 1000);
+        $expiresMs = $createdMs + (5 * 60 * 1000); // QR valid for 5 minutes
+
+        $qr  = $this->buildKhqr($accountId, $name, $city, $amount, $createdMs, $expiresMs);
+        $md5 = md5($qr);
+
+        return response()->json([
+            'success'    => true,
+            'qr'         => $qr,
+            'md5'        => $md5,
+            'order_ref'  => 'KH-' . now()->format('ymdHis') . '-' . random_int(10, 99),
+            'expires_at' => \Carbon\Carbon::createFromTimestampMs($expiresMs)->toIso8601String(),
+        ]);
+    }
+
+    /* ─────────────────────────────────────────────
+       KHQR — CHECK PAYMENT (by md5)
+       Route: POST /pos/khqr/check  (name: pos.khqr.check)
+    ───────────────────────────────────────────── */
+    public function checkKhqr(Request $request)
+    {
+        $request->validate(['md5' => 'required|string|size:32']);
+
+        // .env uses BAKONG_API_TOKEN (fallback to BAKONG_TOKEN)
+        $token = env('BAKONG_API_TOKEN', env('BAKONG_TOKEN'));
+        $url   = rtrim(env('BAKONG_API_URL', 'https://api-bakong.nbc.gov.kh'), '/')
+               . '/v1/check_transaction_by_md5';
+
+        if (!$token) {
+            return response()->json(['paid' => false, 'message' => 'BAKONG_API_TOKEN is not configured.'], 500);
+        }
+
+        try {
+            $res = Http::withToken($token)
+                ->timeout(10)
+                ->acceptJson()
+                ->post($url, ['md5' => $request->md5]);
+
+            $body = $res->json();
+
+            // responseCode 0 + data present = paid
+            $paid = $res->successful()
+                && (($body['responseCode'] ?? 1) === 0)
+                && !empty($body['data']);
+
+            return response()->json(['paid' => $paid]);
+        } catch (\Throwable $e) {
+            Log::warning('Bakong check failed: ' . $e->getMessage());
+
+            return response()->json(['paid' => false, 'message' => 'Unable to reach Bakong.']);
+        }
+    }
+
+    /* ═════════════════════════════════════════════
+       HELPERS
+    ═════════════════════════════════════════════ */
+
+    /**
+     * Build + send the Telegram message. Never throws.
+     */
+    private function notifyTelegram(
+        array $lines,
+        float $grandTotal,
+        string $paymentMethod,
+        float $cashGiven,
+        ?int $customerId
+    ): void {
+        try {
+            // Today's checkout sequence (this checkout is already saved)
+            $seq = Order::whereDate('order_date', now()->toDateString())
+                ->whereNotNull('pos_ref')
+                ->distinct()
+                ->count('pos_ref');
+
+            $invoice = 'N' . now()->format('Ymd') . '-' . str_pad($seq, 3, '0', STR_PAD_LEFT);
+            $line    = '━━━━━━━━━━━━━━━━━━';
+
+            $subtotal  = 0;
+            $itemsText = '';
+
+            foreach ($lines as $l) {
+                $unit      = (float) $l['product']->price;
+                $subtotal += $unit * $l['qty'];
+
+                $itemsText .= '• ' . e($l['product']->name) . " x{$l['qty']}\n";
+                $itemsText .= "🍬 ស្ករ: {$l['sugar']}\n";
+                if ($l['discount'] !== '0') {
+                    $itemsText .= '🏷️ បញ្ចុះ: ' . e($l['discount']) . "\n";
+                }
+                $itemsText .= '💵 តម្លៃ: $' . number_format($unit, 2) . "\n";
+                $itemsText .= '💰 សរុប: $' . number_format($l['lineTotal'], 2) . "\n\n";
+            }
+
+            $discount = max(0, round($subtotal - $grandTotal, 2));
+            $totalKhr = round(($grandTotal * 4000) / 100) * 100;
+            $payLabel = $paymentMethod === 'cash' ? 'Cash' : 'Bank';
+
+            $msg  = "🧾 <b>NEW ORDER RECEIVED</b>\n{$line}\n";
+            $msg .= "<b>INVOICE: {$invoice}</b>\n{$line}\n";
+            $msg .= "🔢 <b>Order No: {$seq}</b>\n{$line}\n";
+            $msg .= $itemsText . "{$line}\n";
+            $msg .= '💵 Subtotal: $' . number_format($subtotal, 2) . "\n";
+            $msg .= '🏷️ Discount: $' . number_format($discount, 2) . "\n";
+            $msg .= '💰 Grand Total: $' . number_format($grandTotal, 2) . "\n";
+            $msg .= '🇰🇭 Grand Total (KHR): ៛' . number_format($totalKhr) . "\n";
+            $msg .= "💳 Payment: {$payLabel}\n";
+
+            if ($paymentMethod === 'cash' && $cashGiven > 0) {
+                $msg .= '💵 Cash given: $' . number_format($cashGiven, 2) . "\n";
+                $msg .= '🔁 Change: $' . number_format(max(0, $cashGiven - $grandTotal), 2) . "\n";
+            }
+
+            if ($customerId && ($c = Customer::find($customerId))) {
+                $msg .= '👤 Customer: ' . e($c->name) . "\n";
+            }
+
+            $msg .= "{$line}\n🕒 " . now()->format('d/m/Y h:i A');
+
+            TelegramNotifier::send($msg);
+        } catch (\Throwable $e) {
+            Log::warning('Telegram failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Same rule as the JS calculateItemTotal(): "10%" or "$2" style discounts.
+     */
+    private function applyDiscount(float $amount, ?string $discount): float
+    {
+        if (!$discount || $discount === '0') {
+            return round($amount, 2);
+        }
+
+        if (str_contains($discount, '%')) {
+            $amount -= $amount * (floatval($discount) / 100);
+        } elseif (str_contains($discount, '$')) {
+            $amount -= floatval(str_replace('$', '', $discount));
+        }
+
+        return max(0, round($amount, 2));
+    }
+
+    /**
+     * First free number for ORD-KR### (same format as OrderController@store).
+     */
+    private function nextOrderNumberStart(): int
+    {
+        $last = Order::where('order_number', 'like', 'ORD-KR%')
+            ->orderBy('id', 'desc')
+            ->lockForUpdate()
+            ->first();
+
+        return $last ? ((int) substr($last->order_number, 6)) + 1 : 1;
+    }
+
+    /**
+     * Build a dynamic KHQR (EMV QR) string for a Bakong individual account, in USD.
+     */
+    private function buildKhqr(
+        string $accountId,
+        string $name,
+        string $city,
+        string $amount,
+        int $createdMs,
+        int $expiresMs
+    ): string {
+        $tlv = fn (string $tag, string $value) =>
+            $tag . str_pad((string) mb_strlen($value), 2, '0', STR_PAD_LEFT) . $value;
+
+        $payload  = $tlv('00', '01');                       // payload format
+        $payload .= $tlv('01', '12');                       // 12 = dynamic QR
+        $payload .= $tlv('29', $tlv('00', $accountId));     // Bakong account
+        $payload .= $tlv('52', '5999');                     // merchant category
+        $payload .= $tlv('53', '840');                      // currency: USD
+        $payload .= $tlv('54', $amount);                    // amount
+        $payload .= $tlv('58', 'KH');                       // country
+        $payload .= $tlv('59', mb_substr($name, 0, 25));    // merchant name
+        $payload .= $tlv('60', mb_substr($city, 0, 15));    // merchant city
+        $payload .= $tlv('99', $tlv('00', (string) $createdMs) . $tlv('01', (string) $expiresMs));
+
+        $payload .= '6304';                                  // CRC tag + length
+
+        return $payload . $this->crc16($payload);
+    }
+
+    /**
+     * CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) — required by EMV QR.
+     */
+    private function crc16(string $data): string
+    {
+        $crc = 0xFFFF;
+
+        for ($i = 0, $len = strlen($data); $i < $len; $i++) {
+            $crc ^= (ord($data[$i]) << 8);
+            for ($b = 0; $b < 8; $b++) {
+                $crc = ($crc & 0x8000) ? (($crc << 1) ^ 0x1021) : ($crc << 1);
+                $crc &= 0xFFFF;
+            }
+        }
+
+        return strtoupper(str_pad(dechex($crc), 4, '0', STR_PAD_LEFT));
     }
 }

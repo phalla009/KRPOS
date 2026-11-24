@@ -8,10 +8,17 @@ use Illuminate\Support\Facades\Auth; // <-- បន្ថែម Auth
 
 class CustomerController extends Controller
 {
+    // Stamps needed for one free coffee
+    private const LOYALTY_GOAL = 10;
+
     // Show list of customers
     public function index()
     {
-        $customers = Customer::with(['orders', 'creator', 'updater'])->get();
+        // withCount creates $customer->orders_count (the original code read it
+        // without ever loading it, so every customer showed as "Inactive").
+        $customers = Customer::with(['orders', 'creator', 'updater'])
+            ->withCount('orders')
+            ->get();
 
         foreach ($customers as $customer) {
             $customer->status = $customer->orders_count > 0 ? 'Active' : 'Inactive';
@@ -59,7 +66,9 @@ class CustomerController extends Controller
     public function show(string $id)
     {
         $customer = Customer::with(['creator', 'updater'])->findOrFail($id);
-        return view('pages/customers.show', compact('customer'));
+        $loyalty  = $this->loyaltyFor($customer);
+
+        return view('pages/customers.show', compact('customer', 'loyalty'));
     }
 
     // Show edit form
@@ -110,5 +119,36 @@ class CustomerController extends Controller
         $customer = Customer::findOrFail($id);
         $customer->delete();
         return redirect()->route('customers.index')->with('success', 'Customer deleted successfully.');
+    }
+
+    /**
+     * Loyalty card data for one customer.
+     *
+     * One stamp = one completed sale (invoice). A POS checkout with 3 cart
+     * items creates 3 `orders` rows sharing one `pos_ref`, so rows are grouped
+     * by pos_ref (or by their own id when pos_ref is null), the same rule
+     * OrderController@index uses for "Total Invoice".
+     */
+    private function loyaltyFor(Customer $customer): array
+    {
+        $goal = self::LOYALTY_GOAL;
+
+        $count = $customer->orders()
+            ->where('status', 'completed')
+            ->get(['id', 'pos_ref'])
+            ->unique(fn ($order) => $order->pos_ref ?? 'single-' . $order->id)
+            ->count();
+
+        $cycle  = $count % $goal;
+        // Show a full card right after the 10th order instead of an empty one.
+        $filled = ($count > 0 && $cycle === 0) ? $goal : $cycle;
+
+        return [
+            'count'   => $count,
+            'goal'    => $goal,
+            'filled'  => $filled,
+            'rewards' => intdiv($count, $goal),
+            'left'    => $goal - $filled,
+        ];
     }
 }
