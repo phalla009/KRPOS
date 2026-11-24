@@ -1,0 +1,88 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Type;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth; // <-- បន្ថែម Auth
+
+class TypeController extends Controller
+{
+    public function index(Request $request)
+    {
+        $search = $request->input('search');
+
+        $totalTypes = Type::count();
+
+        $types = Type::with(['creator', 'updater'])
+            ->when($search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%' . $search . '%')
+                        ->orWhere('description', 'like', '%' . $search . '%');
+                });
+            })
+            ->orderBy('name')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('settings/types.index', compact('types', 'totalTypes', 'search'));
+    }
+
+    public function create()
+    {
+        return view('settings/types.create');
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:types,name',
+            'description' => 'nullable|string',
+        ]);
+
+        // កំណត់អ្នកបង្កើត និងអ្នកកែប្រែដំបូង
+        $validated['created_by'] = Auth::id();
+        $validated['updated_by'] = Auth::id();
+
+        Type::create($validated);
+
+        return redirect()->route('types.create')->with('success', 'Type added successfully.');
+    }
+
+    public function show(string $id)
+    {
+        $type = Type::with(['creator', 'updater'])->findOrFail($id);
+        return view('settings/types.show', compact('type'));
+    }
+
+    public function edit(string $id)
+    {
+        $type = Type::findOrFail($id);
+        return view('settings/types.edit', compact('type'));
+    }
+
+    public function update(Request $request, string $id)
+    {
+        $type = Type::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:types,name,' . $type->id,
+            'description' => 'nullable|string',
+        ]);
+
+        // កំណត់អ្នកកែប្រែចុងក្រោយ
+        $validated['updated_by'] = Auth::id();
+
+        $type->update($validated);
+
+        return redirect()->route('types.index')->with('success', 'Type updated successfully.');
+    }
+
+    public function destroy(string $id)
+    {
+        $type = Type::findOrFail($id);
+        $type->delete();
+
+        return redirect()->route('types.index')->with('success', 'Type deleted successfully.');
+    }
+}

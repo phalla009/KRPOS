@@ -1,0 +1,202 @@
+@extends('layouts.master')
+
+@section('pageTitle')
+    User Management Listing
+@endsection
+
+@section('headerBlock')
+    <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
+    <link rel="stylesheet" href="{{ URL::asset('css/delete_form.css') }}">
+    <script src="{{ URL::asset('js/form.js') }}"></script>
+    <script src="{{ URL::asset('js/delete_form.js') }}"></script>
+    <style>
+        .role-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            width: fit-content;
+        }
+        .role-admin   { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+        .role-manager { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; }
+        .role-staff   { background: #dbeafe; color: #2563eb; border: 1px solid #bfdbfe; }
+        .role-default { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+
+        /* Filter row (same layout as products page) */
+        .filter-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-controls .btn {
+            flex-shrink: 0;
+        }
+
+        #noResultsRow { display: none; }
+
+        @media (max-width: 768px) {
+            .filter-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-controls .btn-primary {
+                width: 100%;
+                justify-content: center;
+                text-align: center;
+            }
+
+            .filter-controls .form-group {
+                width: 100%;
+                min-width: 100% !important;
+            }
+        }
+    </style>
+@endsection
+
+@section('content')
+
+    @if(session('success'))
+        <div id="successMessage" class="custom-success">
+            <div class="success-content">
+                <span class="success-icon">✔</span>
+                <span class="success-text">{{ session('success') }}</span>
+            </div>
+            <div class="progress-bar"></div>
+        </div>
+    @endif
+
+    <div class="content-section" id="users">
+        <h2><i class="fas fa-user-shield"></i> User Managements</h2>
+
+        <div class="filter-section">
+            <div class="filter-controls">
+                <a href="{{ route('usermanagers.create') }}"
+                   class="btn btn-primary page-link-loading"
+                   data-loading-text="Loading add..."
+                   style="white-space:nowrap;">
+                    <i class="fas fa-circle-plus"></i> Add New User
+                </a>
+
+                {{-- Search (same style as products page, filters live in the browser) --}}
+                <div class="form-group" style="position:relative; min-width:800px; margin:0;">
+                    <i class="fas fa-search" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#b39b85;font-size:14px;pointer-events:none;"></i>
+                    <input type="text"
+                           id="userSearch"
+                           placeholder="Search Users..."
+                           autocomplete="off"
+                           style="border-radius:24px; padding-left:38px;">
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Full Name</th>
+                    <th>Login</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody id="usersTable">
+                @forelse ($users as $user)
+                    <tr class="user-row">
+                        <td data-label="No">#{{ $loop->iteration }}</td>
+                        <td data-label="Full Name">
+                            <i class="fas fa-user user-icon"></i> {{ $user->name }}
+                        </td>
+                        <td data-label="Login" style="color: black; font-weight: 600;">{{ $user->login }}</td>
+                        <td data-label="Email">{{ $user->email }}</td>
+                        <td data-label="Role">
+                            @php
+                                $roleName  = $user->role->role_name ?? 'N/A';
+                                $roleClass = match(strtolower($roleName)) {
+                                    'admin'   => 'role-admin',
+                                    'manager' => 'role-manager',
+                                    'staff'   => 'role-staff',
+                                    default   => 'role-default',
+                                };
+                            @endphp
+                            <span class="role-badge {{ $roleClass }}">{{ $roleName }}</span>
+                        </td>
+                        <td data-label="Actions">
+                            <div class="action-buttons">
+                                <a href="{{ route('usermanagers.show', $user->id) }}"
+                                   class="action-btn show-btn page-link-loading"
+                                   data-loading-text="Loading details..."
+                                   title="View Details">
+                                    <i class="fas fa-info-circle"></i>
+                                </a>
+                                <a href="{{ route('usermanagers.edit', $user->id) }}"
+                                   class="action-btn edit-btn page-link-loading"
+                                   data-loading-text="Opening editor..."
+                                   title="Edit User">
+                                    <i class="fas fa-pen"></i>
+                                </a>
+                                <button type="button"
+                                        class="action-btn delete-btn openDeleteModal"
+                                        data-action="{{ route('usermanagers.destroy', $user->id) }}"
+                                        title="Delete User">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" style="text-align:center;" id="found">No users found.</td>
+                    </tr>
+                @endforelse
+
+                {{-- Shown when search yields no matches --}}
+                <tr id="noResultsRow">
+                    <td colspan="6" style="text-align:center; color:#6b7280;">
+                        <i class="fas fa-search" style="margin-right:6px;"></i> No results match your search.
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Delete Confirmation Modal --}}
+    <x-delete-modal />
+
+    <script>
+        // Live search: filters by name, login, email, and role
+        const userSearch = document.getElementById('userSearch');
+
+        userSearch.addEventListener('input', function () {
+            const term = this.value.toLowerCase().trim();
+            const rows = document.querySelectorAll('#usersTable .user-row');
+            let visibleCount = 0;
+
+            rows.forEach(function (row) {
+                const name  = row.querySelector('[data-label="Full Name"]')?.textContent.toLowerCase() ?? '';
+                const login = row.querySelector('[data-label="Login"]')?.textContent.toLowerCase() ?? '';
+                const email = row.querySelector('[data-label="Email"]')?.textContent.toLowerCase() ?? '';
+                const role  = row.querySelector('[data-label="Role"]')?.textContent.toLowerCase() ?? '';
+
+                const matches = name.includes(term) || login.includes(term) || email.includes(term) || role.includes(term);
+                row.style.display = matches ? '' : 'none';
+                if (matches) visibleCount++;
+            });
+
+            document.getElementById('noResultsRow').style.display =
+                (visibleCount === 0 && term !== '' && rows.length > 0) ? '' : 'none';
+        });
+
+        // No form here, so Enter should do nothing
+        userSearch.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') e.preventDefault();
+        });
+    </script>
+
+@endsection

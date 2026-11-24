@@ -1,0 +1,222 @@
+@extends('layouts.master')
+
+@section('pageTitle')
+    Add New User
+@endsection
+
+@section('headerBlock')
+    <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
+    <script src="{{ URL::asset('js/form.js') }}"></script>
+    <style>
+        #loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 99999;
+        }
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 60px; height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-text { margin-top: 15px; font-size: 16px; color: #333; }
+        .text-danger { color: red; margin-top: 4px; }
+
+        /* Permission Display */
+        .perm-display-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            min-height: 80px;
+        }
+
+        .perm-display-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 7px;
+            font-size: 12.5px;
+            color: #4b5563;
+            border: 1px solid #e5e7eb;
+        }
+
+        .perm-display-item input[type="checkbox"] {
+            width: 13px;
+            height: 13px;
+            accent-color: #6366f1;
+            flex-shrink: 0;
+        }
+    </style>
+@endsection
+
+@section('content')
+    {{-- Loading Overlay --}}
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading...</div>
+    </div>
+
+    @if(session('success'))
+        <div id="successMessage" class="custom-success">
+            <div class="success-content">
+                <span class="success-icon">✔</span>
+                <span class="success-text">{{ session('success') }}</span>
+            </div>
+            <div class="progress-bar"></div>
+        </div>
+    @endif
+
+    <div class="modal-content" role="dialog" aria-labelledby="modalTitle" aria-modal="true">
+        <a href="{{ route('usermanagers.index') }}" id="backBtn" class="btn btn-back">
+            <i class="fas fa-chevron-left"></i> Back
+        </a>
+
+        <h2><i class="fas fa-user-shield"></i> Add New User </h2>
+
+        <form id="userManagerForm" action="{{ route('usermanagers.store') }}" method="POST">
+            @csrf
+
+            {{-- Row 1: Full Name, Login & Email --}}
+            <div class="form-row" style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div class="form-group">
+                    <label for="name"><i class="fas fa-user"></i> Full Name:</label>
+                    <input id="name" type="text" name="name" value="{{ old('name') }}" placeholder="Enter full name">
+                    @error('name') <p class="text-danger">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="login"><i class="fas fa-user-tag"></i> User Login:</label>
+                    <input id="login" type="text" name="login" value="{{ old('login') }}" placeholder="Enter login username">
+                    @error('login') <p class="text-danger">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="email"><i class="fas fa-envelope"></i> Email:</label>
+                    <input id="email" type="email" name="email" value="{{ old('email') }}" placeholder="Enter email">
+                    @error('email') <p class="text-danger">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="role_id"><i class="fas fa-user-shield"></i> Assign Role:</label>
+                    <select id="role_id" name="role_id">
+                        <option value="">Select role</option>
+                        @foreach($roles as $role)
+                            <option value="{{ $role->id }}" {{ old('role_id') == $role->id ? 'selected' : '' }}>
+                                {{ $role->role_name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('role_id') <p class="text-danger">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            {{-- Row 2: Password & Confirm Password --}}
+            <div class="form-row grid-row-2">
+                <div class="form-group">
+                    <label for="password"><i class="fas fa-lock"></i> Password:</label>
+                    <input id="password" type="password" name="password" placeholder="Enter password">
+                    @error('password') <p class="text-danger">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="password_confirmation"><i class="fas fa-key"></i> Confirm Password:</label>
+                    <input id="password_confirmation" type="password" name="password_confirmation" placeholder="Confirm password">
+                    @error('password_confirmation') <p class="text-danger">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            {{-- Row 3: Description --}}
+            <div class="form-group">
+                <label for="description"><i class="fas fa-align-left"></i> Description:</label>
+                <textarea id="description" name="description"
+                          placeholder="description..."
+                          rows="3"
+                          style="width: 100%; resize: none;height: 120px; ">{{ old('description') }}</textarea>
+                @error('description') <p class="text-danger">{{ $message }}</p> @enderror
+            </div>
+
+            {{-- Buttons --}}
+            <div>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button type="button" id="cancel" class="btn btn-cancel">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+            </div>
+
+        </form>
+    </div>
+
+    <script>
+        const overlay     = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+
+        window.addEventListener('load', function () {
+            overlay.style.display = 'none';
+        });
+
+        document.getElementById('backBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            loadingText.textContent = 'Going back...';
+            overlay.style.display = 'flex';
+            window.location.href = this.getAttribute('href');
+        });
+
+        document.getElementById('userManagerForm').addEventListener('submit', function() {
+            loadingText.textContent = 'Saving...';
+            overlay.style.display = 'flex';
+        });
+
+        document.getElementById('cancel').addEventListener('click', function() {
+            document.getElementById('userManagerForm').reset();
+            const permissionsContainer = document.getElementById('permissionsContainer');
+            if (permissionsContainer) {
+                permissionsContainer.innerHTML =
+                    '<span style="color:#9ca3af;font-size:12.5px;grid-column:span 2;">Select a role to view permissions...</span>';
+            }
+        });
+
+        const roles = @json($roles);
+        const roleSelect = document.getElementById('role_id');
+        const permissionsContainer = document.getElementById('permissionsContainer');
+
+        if (roleSelect && permissionsContainer) {
+            roleSelect.addEventListener('change', function() {
+                const roleId = this.value;
+                permissionsContainer.innerHTML = '';
+                const role = roles.find(r => r.id == roleId);
+
+                if (role && role.permissions && role.permissions.length > 0) {
+                    role.permissions.forEach(p => {
+                        const div = document.createElement('div');
+                        div.className = 'perm-display-item';
+                        div.innerHTML = `
+                            <input type="checkbox" checked disabled id="perm_${p.id}">
+                            <label for="perm_${p.id}" style="font-size:12.5px; color:#4b5563; cursor:default;">${p.permission_name}</label>
+                        `;
+                        permissionsContainer.appendChild(div);
+                    });
+                } else {
+                    permissionsContainer.innerHTML =
+                        '<span style="color:#9ca3af;font-size:12.5px;grid-column:span 2;">No permissions found for this role.</span>';
+                }
+            });
+
+            if (roleSelect.value) {
+                roleSelect.dispatchEvent(new Event('change'));
+            }
+        }
+    </script>
+@endsection
