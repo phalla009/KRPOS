@@ -40,4 +40,10 @@ COPY start.sh /usr/local/bin/start.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start.sh && chmod +x /usr/local/bin/start.sh
 
 # Permissions
-RUN mkdir -p storage/framework/cache storage/framework/sessions
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 storage bootstrap/cache
+
+EXPOSE 8080
+
+CMD ["/usr/local/bin/start.sh"]
