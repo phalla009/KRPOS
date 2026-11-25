@@ -7,6 +7,7 @@
 @section('headerBlock')
     <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
     <link rel="stylesheet" href="{{ URL::asset('css/delete_form.css') }}">
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
     {{-- SortableJS CDN សម្រាប់មុខងារ Drag & Drop Stat Cards --}}
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="{{ URL::asset('js/form.js') }}"></script>
@@ -23,6 +24,87 @@
         .stock-in  { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; }
         .stock-low { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
         .stock-out { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+
+        /* Filter bar */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 0 0 14px 0;
+        }
+        .filter-bar .type-filter-wrap .cs-input,
+        .filter-bar .type-filter-wrap [class*="select"],
+        .filter-bar .type-filter-wrap [class*="dropdown"] > [class*="trigger"],
+        .filter-bar .type-filter-wrap [class*="dropdown"] > button,
+        .filter-bar .type-filter-wrap [class*="dropdown"] > div:first-child {
+            border-radius: 24px !important;
+            padding-left: 18px;
+        }
+        .filter-bar select {
+            padding: 8px 14px;
+            border: 1px solid #e5e7eb;
+            font-size: 13px;
+            background: #fff;
+            color: #a16207;
+            outline: none;
+            cursor: pointer;
+        }
+        .filter-bar select:focus { border-color: #6366f1; }
+
+        /* Wider dropdown so long type names don't wrap */
+        .filter-bar .type-filter-wrap {
+            width: 320px;
+            max-width: 100%;
+        }
+        .filter-bar label {
+            font-size: 17px;
+            font-weight: 700;
+            color: #a16207;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .filter-bar label i {
+            font-size: 17px;
+        }
+        .filter-bar .type-filter-wrap > *,
+        .filter-bar .type-filter-wrap select,
+        .filter-bar .type-filter-wrap [class*="select"],
+        .filter-bar .type-filter-wrap [class*="dropdown"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box;
+        }
+        .filter-bar .type-filter-wrap [class*="option"],
+        .filter-bar .type-filter-wrap li {
+            white-space: nowrap;
+        }
+
+        .filter-clear {
+            font-size: 14px;
+            font-weight: 600;
+            color: #dc2626;
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 24px;
+            padding: 9px 18px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            transition: background 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s;
+        }
+        .filter-clear:hover {
+            background: #dc2626;
+            color: #fff;
+            text-decoration: none;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(220, 38, 38, 0.25);
+        }
+        .filter-clear:active {
+            transform: translateY(0);
+        }
 
         /* Styles សម្រាប់ Stat Cards Grid */
         .stats-grid {
@@ -90,6 +172,8 @@
             .stat-card p {
                 font-size: 11px;
             }
+
+            .filter-bar .type-filter-wrap { flex: 1; }
         }
     </style>
 @endsection
@@ -132,6 +216,27 @@
                 <p>Inventory Value</p>
                 <h3>${{ number_format($inventoryValue, 2) }}</h3>
             </div>
+        </div>
+
+        {{-- Filter by type --}}
+        <div class="filter-bar" style="margin-top: 16px;">
+            <label for="typeFilter"><i class="fas fa-layer-group"></i> Filter by Type:</label>
+            <div class="type-filter-wrap">
+                <select id="typeFilter" class="js-select" data-current="{{ $selectedType }}">
+                    <option value="">All types</option>
+                    @foreach($types as $type)
+                        <option value="{{ $type->name }}" {{ $selectedType === $type->name ? 'selected' : '' }}>
+                            {{ $type->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            @if($selectedType)
+                <a href="{{ route('inventory-items.index') }}" class="filter-clear page-link-loading" data-loading-text="Clearing...">
+                    <i class="fas fa-times-circle"></i> Clear filter
+                </a>
+            @endif
         </div>
 
         {{-- Table --}}
@@ -194,14 +299,20 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" style="text-align:center;" id="found">No items found.</td>
+                        <td colspan="8" style="text-align:center;" id="found">
+                            @if($selectedType)
+                                No items found for type "{{ $selectedType }}".
+                            @else
+                                No items found.
+                            @endif
+                        </td>
                     </tr>
                 @endforelse
                 </tbody>
             </table>
         </div>
 
-        {{-- Pagination --}}
+        {{-- Pagination (keeps ?type=... via withQueryString) --}}
         @if ($items->hasPages())
             <nav aria-label="Page navigation" class="inventory-pagination">
                 <ul class="pagination-list">
@@ -285,6 +396,34 @@
                 }
             });
         });
+
+        // ===== Filter by type (works with custom js-select) =====
+        (function () {
+            const select = document.getElementById('typeFilter');
+            if (!select) return;
+
+            const baseUrl = "{{ route('inventory-items.index') }}";
+            let navigating = false;
+
+            function applyTypeFilter() {
+                if (navigating) return;
+                if (select.value === (select.dataset.current || '')) return; // no change
+                navigating = true;
+
+                const url = new URL(baseUrl, window.location.origin);
+                if (select.value) url.searchParams.set('type', select.value);
+
+                showLoading('Filtering...');
+                window.location.href = url.toString();
+            }
+
+            // Native + jQuery (Select2) events
+            ['change', 'input'].forEach(evt => select.addEventListener(evt, applyTypeFilter));
+            if (window.jQuery) window.jQuery(select).on('change select2:select', applyTypeFilter);
+
+            // Fallback for custom dropdowns that set .value without firing events
+            setInterval(applyTypeFilter, 250);
+        })();
     </script>
 
 @endsection

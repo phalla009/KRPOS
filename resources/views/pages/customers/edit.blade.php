@@ -7,6 +7,7 @@
 @section('headerBlock')
     <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
     <script src="{{ URL::asset('js/form.js')}}"></script>
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
     <style>
         #loading-overlay {
             position: fixed;
@@ -67,6 +68,11 @@
             color: #ca6f1e;
             text-decoration: underline;
         }
+
+        #description {
+            width: 100%;
+            resize: vertical;
+        }
     </style>
 @endsection
 
@@ -101,7 +107,7 @@
                 {{-- Gender --}}
                 <div class="form-group">
                     <label for="gender"><i class="fas fa-venus-mars"></i> Gender:</label>
-                    <select id="gender" name="gender">
+                    <select id="gender" name="gender"class="js-select">
                         <option value="">Select Gender</option>
                         <option value="male"   {{ (old('gender', $customer->gender) == 'male')   ? 'selected' : '' }}>Male</option>
                         <option value="female" {{ (old('gender', $customer->gender) == 'female') ? 'selected' : '' }}>Female</option>
@@ -132,6 +138,18 @@
                 </div>
             </div>
 
+            {{-- Description --}}
+            <div class="form-row">
+                <div class="form-group" style="width:100%;">
+                    <label for="description"><i class="fas fa-align-left"></i> Description:</label>
+                    <textarea id="description" name="description" rows="4" maxlength="1000" style="height: 120px; resize: none;"
+                              placeholder="Enter description (optional)">{{ old('description', $customer->description) }}</textarea>
+                    @error('description')
+                    <p class="text-danger mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+            </div>
+
             {{-- Password Toggle Button --}}
             <div class="form-row">
                 <button type="button" id="togglePasswordBtn">
@@ -144,7 +162,7 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="password"><i class="fas fa-lock"></i> New Password:</label>
-                        <input id="password" type="password" name="password" placeholder="Enter new password" autocomplete="new-password">
+                        <input id="password" type="password" name="password" placeholder="New password" autocomplete="new-password">
                         @error('password')
                         <p class="text-danger mt-1">{{ $message }}</p>
                         @enderror
@@ -203,7 +221,7 @@
         // Auto-expand password section if there were validation errors on password
         @if($errors->has('password'))
             passwordSection.style.display = 'block';
-        toggleBtn.innerHTML = '<i class="fas fa-lock-open"></i> Cancel Password Change';
+            toggleBtn.innerHTML = '<i class="fas fa-lock-open"></i> Cancel Password Change';
         @endif
     </script>
 

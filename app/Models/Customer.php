@@ -16,6 +16,7 @@ class Customer extends Model
         'email',
         'password',
         'status',
+        'description',
         'created_by', // បន្ថែម
         'updated_by', // បន្ថែម
     ];

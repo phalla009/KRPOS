@@ -79,7 +79,7 @@
         font-weight: 700;
     }
     .lc-stamp.is-filled { background: #d9a066; border: 1.5px solid #d9a066; color: #2c1b14; font-size: 34px; }
-    .lc-stamp.is-free   { border: 1.5px solid #d9a066; color: #d9a066; font-size: 14px; font-weight: 700; text-align: center; line-height: 1.25; }
+    .lc-stamp.is-free   { border: 1.5px solid #d9a066; color: #d9a066; font-size: z14px; font-weight: 700; text-align: center; line-height: 1.25; }
     .lc-stamp.is-free small { font-size: 11px; letter-spacing: 0.12em; font-weight: 700; }
     .lc-stamp.is-free.is-filled { background: #d9a066; color: #2c1b14; font-size: 34px; }
 

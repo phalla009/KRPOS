@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth; // <-- បន្ថែម Auth
+use Illuminate\Support\Facades\Auth;
 
 class CustomerController extends Controller
 {
@@ -14,8 +14,6 @@ class CustomerController extends Controller
     // Show list of customers
     public function index()
     {
-        // withCount creates $customer->orders_count (the original code read it
-        // without ever loading it, so every customer showed as "Inactive").
         $customers = Customer::with(['orders', 'creator', 'updater'])
             ->withCount('orders')
             ->get();
@@ -37,26 +35,27 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'     => 'required|string|max:255',
-            'gender'   => 'required|string|in:male,female',
-            'phone'    => 'required|string|max:20|unique:customers,phone',
-            'email'    => 'required|email|max:255|unique:customers,email',
-            'password' => 'required|string|min:8|confirmed',
-            'status'   => 'required|in:active,inactive',
+            'name'        => 'required|string|max:255',
+            'gender'      => 'required|string|in:male,female',
+            'phone'       => 'required|string|max:20|unique:customers,phone',
+            'email'       => 'required|email|max:255|unique:customers,email',
+            'password'    => 'required|string|min:8|confirmed',
+            'description' => 'nullable|string|max:1000',
         ], [
             'phone.unique' => 'This phone number already exists.',
             'email.unique' => 'This email address already exists.',
         ]);
 
         Customer::create([
-            'name'       => $validated['name'],
-            'gender'     => $validated['gender'],
-            'phone'      => $validated['phone'],
-            'email'      => $validated['email'],
-            'password'   => bcrypt($validated['password']),
-            'status'     => $validated['status'],
-            'created_by' => Auth::id(), // កំណត់អ្នកបង្កើត
-            'updated_by' => Auth::id(), // កំណត់អ្នកកែប្រែដំបូង
+            'name'        => $validated['name'],
+            'gender'      => $validated['gender'],
+            'phone'       => $validated['phone'],
+            'email'       => $validated['email'],
+            'password'    => bcrypt($validated['password']),
+            'status'      => 'inactive',
+            'description' => $validated['description'] ?? null,
+            'created_by'  => Auth::id(),
+            'updated_by'  => Auth::id(),
         ]);
 
         return redirect()->route('customers.create')->with('success', 'Customer added successfully.');
@@ -65,8 +64,13 @@ class CustomerController extends Controller
     // Show a customer
     public function show(string $id)
     {
-        $customer = Customer::with(['creator', 'updater'])->findOrFail($id);
-        $loyalty  = $this->loyaltyFor($customer);
+        $customer = Customer::with(['creator', 'updater'])
+            ->withCount('orders')
+            ->findOrFail($id);
+
+        $customer->status = $customer->orders_count > 0 ? 'active' : 'inactive';
+
+        $loyalty = $this->loyaltyFor($customer);
 
         return view('pages/customers.show', compact('customer', 'loyalty'));
     }
@@ -82,21 +86,23 @@ class CustomerController extends Controller
     public function update(Request $request, $id)
     {
         $validated = $request->validate([
-            'name'     => 'required|string|max:255',
-            'gender'   => 'required|string|in:male,female',
-            'phone'    => 'required|string|max:20|unique:customers,phone,' . $id,
-            'email'    => 'required|email|max:255|unique:customers,email,' . $id,
-            'password' => 'nullable|string|min:8|confirmed',
+            'name'        => 'required|string|max:255',
+            'gender'      => 'required|string|in:male,female',
+            'phone'       => 'required|string|max:20|unique:customers,phone,' . $id,
+            'email'       => 'required|email|max:255|unique:customers,email,' . $id,
+            'password'    => 'nullable|string|min:8|confirmed',
+            'description' => 'nullable|string|max:1000',
         ], [
             'phone.unique' => 'This phone number already exists.',
             'email.unique' => 'This email address already exists.',
         ]);
 
-        $customer         = Customer::findOrFail($id);
-        $customer->name   = $validated['name'];
-        $customer->gender = $validated['gender'];
-        $customer->phone  = $validated['phone'];
-        $customer->email  = $validated['email'];
+        $customer              = Customer::findOrFail($id);
+        $customer->name        = $validated['name'];
+        $customer->gender      = $validated['gender'];
+        $customer->phone       = $validated['phone'];
+        $customer->email       = $validated['email'];
+        $customer->description = $validated['description'] ?? null;
 
         if (!empty($validated['password'])) {
             $customer->password = bcrypt($validated['password']);
@@ -106,7 +112,6 @@ class CustomerController extends Controller
             $customer->status = $request->input('status');
         }
 
-        // កំណត់អ្នកកែប្រែចុងក្រោយ
         $customer->updated_by = Auth::id();
 
         $customer->save();
@@ -123,11 +128,7 @@ class CustomerController extends Controller
 
     /**
      * Loyalty card data for one customer.
-     *
-     * One stamp = one completed sale (invoice). A POS checkout with 3 cart
-     * items creates 3 `orders` rows sharing one `pos_ref`, so rows are grouped
-     * by pos_ref (or by their own id when pos_ref is null), the same rule
-     * OrderController@index uses for "Total Invoice".
+     * One stamp = one completed sale (invoice), grouped by pos_ref.
      */
     private function loyaltyFor(Customer $customer): array
     {
@@ -140,7 +141,6 @@ class CustomerController extends Controller
             ->count();
 
         $cycle  = $count % $goal;
-        // Show a full card right after the 10th order instead of an empty one.
         $filled = ($count > 0 && $cycle === 0) ? $goal : $cycle;
 
         return [

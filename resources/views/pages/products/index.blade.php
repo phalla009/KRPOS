@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="{{ URL::asset('css/delete_form.css') }}">
     <script src="{{ URL::asset('js/form.js') }}"></script>
     <script src="{{ URL::asset('js/delete_form.js') }}" defer></script>
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
+
     <style>
         /* Page-specific colors (shared palette lives in main.css :root) */
         :root {
@@ -126,6 +128,11 @@
             border-radius: 8px;
             margin-bottom: 16px;
             font-size: 14px;
+        }
+        /* Custom dropdown (.cs) នៅទំព័រ Products ប៉ុណ្ណោះ */
+        .filter-controls .cs-input {
+            border-radius: 24px;
+            padding-left: 18px;
         }
 
         /* Export = terracotta */
@@ -472,7 +479,7 @@
                     </a>
 
                     <div class="form-group" style="max-width:200px;">
-                        <select name="category_id" onchange="showLoading('Filtering...'); this.form.submit()">
+                        <select name="category_id" onchange="showLoading('Filtering...'); this.form.submit()" class="js-select">
                             <option value="">All Categories</option>
                             @foreach($categories as $category)
                                 <option value="{{ $category->id }}"
@@ -530,10 +537,19 @@
                         {{-- Product Image Thumbnail --}}
                         <td data-label="Image">
                             <div class="product-img-wrapper">
-                                @if($product->images->first())
-                                    <img src="{{ asset('images/products/' . $product->images->first()->image) }}"
-                                         alt="{{ $product->name }}"
-                                         class="product-thumb">
+                                @php
+                                    $firstImage = $product->images->first();
+                                    $thumbPath  = $firstImage ? 'images/products/thumbs/' . $firstImage->image : null;
+                                    $imgSrc = $firstImage
+                                        ? (file_exists(public_path($thumbPath)) ? asset($thumbPath) : asset('images/products/' . $firstImage->image))
+                                        : null;
+                                @endphp
+                                @if($firstImage)
+                                    <img src="{{ $imgSrc }}"
+                                        alt="{{ $product->name }}"
+                                        class="product-thumb"
+                                        width="40" height="40"
+                                        loading="lazy" decoding="async">
                                 @else
                                     <div class="product-thumb-placeholder">
                                         <i class="fas fa-image"></i>
@@ -670,9 +686,53 @@
 
     <script>
         // Search Enter
-        document.getElementById('searchInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') showLoading('Searching...');
-        });
+        // ---- Live search (AJAX, debounce 400ms) ----
+        (function () {
+            const form = document.getElementById('filterForm');
+            const searchInput = document.getElementById('searchInput');
+            let timer = null;
+            let controller = null;
+
+            async function liveSearch() {
+                const url = form.action + '?' + new URLSearchParams(new FormData(form)).toString();
+
+                if (controller) controller.abort();
+                controller = new AbortController();
+
+                const tbody = document.getElementById('productsTable');
+                tbody.style.opacity = '.5';
+
+                try {
+                    const res = await fetch(url, { signal: controller.signal });
+                    const html = await res.text();
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+                    tbody.innerHTML = doc.getElementById('productsTable').innerHTML;
+
+                    const oldNav = document.querySelector('.products-pagination');
+                    const newNav = doc.querySelector('.products-pagination');
+                    if (oldNav && newNav) oldNav.replaceWith(newNav);
+                    else if (oldNav) oldNav.remove();
+                    else if (newNav) document.querySelector('.table-container').after(newNav);
+
+                    history.replaceState(null, '', url);
+                    updateBulkUI();
+                } catch (e) {
+                    if (e.name !== 'AbortError') form.submit();
+                } finally {
+                    tbody.style.opacity = '1';
+                }
+            }
+
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(liveSearch, 400);
+            });
+
+            searchInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); liveSearch(); }
+            });
+        })();
 
         // Reopen import modal automatically if there were import errors
         @if(session('error') && session('import_errors'))

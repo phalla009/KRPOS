@@ -21,6 +21,7 @@ class InventoryItem extends Model
         'qty',
         'unit',
         'type',
+        'description',
         'created_by', // បន្ថែម
         'updated_by', // បន្ថែម
     ];

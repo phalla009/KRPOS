@@ -7,6 +7,7 @@
 @section('headerBlock')
     <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
     <style>
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
         .stat-card { cursor: grab !important; user-select: none; word-break: break-word; }
@@ -23,6 +24,80 @@
             font-size: 14px; background: #fff;
         }
         .filter-bar input[type="text"] { min-width: 220px; }
+
+        /* ===== Type dropdown (js-select) ===== */
+        .filter-bar .type-filter-wrap {
+            width: 210px;
+            max-width: 100%;
+        }
+        .filter-bar .type-filter-wrap > *,
+        .filter-bar .type-filter-wrap select,
+        .filter-bar .type-filter-wrap [class*="select"],
+        .filter-bar .type-filter-wrap [class*="dropdown"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box;
+        }
+        /* Fully rounded box (pill shape) */
+        .filter-bar .type-filter-wrap > *,
+        .filter-bar .type-filter-wrap select,
+        .filter-bar .type-filter-wrap [class*="select"],
+        .filter-bar .type-filter-wrap [class*="dropdown"],
+        .filter-bar .type-filter-wrap [class*="trigger"],
+      
+        /* Keep text away from the rounded edge */
+        .filter-bar .type-filter-wrap [class*="trigger"],
+        .filter-bar .type-filter-wrap button,
+        .filter-bar .type-filter-wrap [class*="select"] {
+            padding-left: 18px;
+        }
+        /* Opened options list */
+        .filter-bar .type-filter-wrap [class*="menu"],
+        .filter-bar .type-filter-wrap [class*="options"],
+        .filter-bar .type-filter-wrap ul {
+            border-radius: 16px !important;
+            overflow: hidden;
+        }
+        .filter-bar .type-filter-wrap [class*="option"],
+        .filter-bar .type-filter-wrap li {
+            white-space: nowrap;
+        }
+
+        /* Keep padding inside the 200px box so it can't overflow */
+        .filter-bar .type-filter-wrap,
+        .filter-bar .type-filter-wrap * {
+            box-sizing: border-box !important;
+        }
+
+        /* Guarantee a gap before the date inputs */
+        .filter-bar .type-filter-wrap {
+            flex: 0 0 200px;
+            margin-right: 6px;
+        }
+
+        /* Keep the original <select> hidden (js-select shows its own dropdown) */
+        .filter-bar .type-filter-wrap select.js-select {
+            display: none !important;
+        }
+
+        /* Vertically center the text and the arrow */
+        .filter-bar .type-filter-wrap [class*="trigger"],
+        .filter-bar .type-filter-wrap [class*="select"]:not(select),
+        .filter-bar .type-filter-wrap button {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px 0 18px;
+            height: 42px;
+        }
+        .filter-bar .type-filter-wrap i,
+        .filter-bar .type-filter-wrap svg,
+        .filter-bar .type-filter-wrap [class*="arrow"],
+        .filter-bar .type-filter-wrap [class*="chevron"] {
+            position: static !important;
+            transform: none !important;
+            margin: 0;
+        }
 
         .table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .inventory-pagination { display: flex; justify-content: center; margin-top: 20px; }
@@ -81,11 +156,13 @@
 
         {{-- Filters --}}
         <form method="GET" action="{{ route('transactions.index') }}" class="filter-bar">
-            <select name="type">
-                <option value="">All Types</option>
-                <option value="income"  @selected(request('type') === 'income')>Income (Orders)</option>
-                <option value="expense" @selected(request('type') === 'expense')>Expense (Inventory)</option>
-            </select>
+            <div class="type-filter-wrap">
+                <select name="type" class="js-select">
+                    <option value="">All Types</option>
+                    <option value="income"  @selected(request('type') === 'income')>Income (Orders)</option>
+                    <option value="expense" @selected(request('type') === 'expense')>Expense (Inventory)</option>
+                </select>
+            </div>
             <input type="date" name="date_from" value="{{ $dateFrom }}" title="From date">
             <input type="date" name="date_to"   value="{{ $dateTo }}"   title="To date">
             <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>

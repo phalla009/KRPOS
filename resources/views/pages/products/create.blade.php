@@ -7,6 +7,7 @@
 @section('headerBlock')
     <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
     <script src="{{ URL::asset('js/form.js') }}"></script>
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
     <style>
         #loading-overlay {
             position: fixed;
@@ -72,7 +73,7 @@
 
                 <div class="form-group" style="flex: 1; min-width: 250px;">
                     <label for="category_id"><i class="fas fa-copyright"></i> Category:</label>
-                    <select id="category_id" name="category_id">
+                    <select id="category_id" name="category_id" class="js-select">
                         <option value="">Select Category</option>
                         @foreach($categories as $category)
                             <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
@@ -117,7 +118,7 @@
 
                 <div class="form-group" style="flex: 1; min-width: 250px;">
                     <label for="status"><i class="fas fa-toggle-on"></i> Status:</label>
-                    <select id="status" name="status">
+                    <select id="status" name="status" class="js-select">
                         <option value="">Select Status</option>
                         <option value="active"   {{ old('status') == 'active'   ? 'selected' : '' }}>Active</option>
                         <option value="inactive" {{ old('status') == 'inactive' ? 'selected' : '' }}>Inactive</option>

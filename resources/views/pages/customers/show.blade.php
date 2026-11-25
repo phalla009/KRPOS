@@ -18,6 +18,11 @@
             flex-direction: column;
             z-index: 99999;
         }
+        .loyalty-wrapper {
+            max-width: 700px;
+            width: 100%;
+            margin: 0 auto 10px;
+        }
         .spinner {
             border: 6px solid #f3f3f3;
             border-top: 6px solid #3498db;
@@ -82,7 +87,7 @@
             padding: 4px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
             text-transform: capitalize;
         }
-        .status-badge.status-active { background: #eafaf1; color: #27ae60; border: 1px solid #b7ecc9; }
+        .status-badge.status-active   { background: #eafaf1; color: #27ae60; border: 1px solid #b7ecc9; }
         .status-badge.status-inactive { background: #fdf1f0; color: #e74c3c; border: 1px solid #f5c2c2; }
         .status-badge i { font-size: 8px; color: inherit; }
     </style>
@@ -116,6 +121,10 @@
         </div>
 
         {{-- Row 2: Phone, Email, Status --}}
+        @php
+            // Always lowercase, and fall back to "inactive" if empty
+            $status = strtolower($customer->status ?: 'inactive');
+        @endphp
         <div class="info-row-3">
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-phone"></i> Phone</div>
@@ -128,16 +137,24 @@
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-circle-check"></i> Status</div>
                 <div class="info-value">
-                    <span class="status-badge status-{{ $customer->status }}">
-                        <i class="fas fa-circle"></i> {{ $customer->status }}
+                    <span class="status-badge status-{{ $status }}">
+                        <i class="fas fa-circle"></i> {{ $status }}
                     </span>
                 </div>
             </div>
         </div>
 
         {{-- Loyalty Card --}}
-        @include('pages.customers.loyalty-card')
-        
+        <div class="loyalty-wrapper">
+            @include('pages.customers.loyalty-card')
+        </div>
+        {{-- Description --}}
+        <div class="info-row" style="grid-template-columns: 1fr;">
+            <div class="info-box">
+                <div class="info-label"><i class="fas fa-align-left"></i> Description</div>
+                <div class="info-value" style="white-space: pre-line;">{{ $customer->description ?: '-' }}</div>
+            </div>
+        </div>
         {{-- Row 3: Created At & Created By --}}
         <div class="info-row">
             <div class="info-box">

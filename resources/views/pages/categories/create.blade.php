@@ -7,6 +7,7 @@
 @section('headerBlock')
     <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
     <script src="{{ URL::asset('js/form.js') }}"></script>
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
 
     <style>
         #loading-overlay {
@@ -72,7 +73,7 @@
                 </div>
                 <div class="form-group" style="width: 50%;">
                     <label for="status"><i class="fas fa-toggle-on"></i> Status:</label>
-                    <select id="status" name="status" style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px;">
+                    <select id="status" name="status" class="js-select">
                         <option value="active" {{ old('status', 'active') === 'active' ? 'selected' : '' }}>Active</option>
                         <option value="inactive" {{ old('status') === 'inactive' ? 'selected' : '' }}>Inactive</option>
                     </select>

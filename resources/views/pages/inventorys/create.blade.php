@@ -3,7 +3,10 @@
 @section('pageTitle')
     Add Inventory Item
 @endsection
-
+@section('headerBlock')
+    <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
+@endsection
 @section('content')
     <div class="modal-content">
         <a href="{{ route('inventory-items.index') }}" id="backBtn" class="btn btn-back" aria-label="Back to inventory items list">
@@ -26,7 +29,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="type"><i class="fas fa-layer-group"></i> Type</label>
-                    <select name="type" id="type">
+                    <select name="type" id="type" class="js-select">
                         <option value="">Select type</option>
                         @foreach($types as $type)
                             <option value="{{ $type->name }}" {{ old('type') == $type->name ? 'selected' : '' }}>
@@ -40,7 +43,7 @@
                 </div>
                 <div class="form-group">
                     <label for="unit"><i class="fas fa-balance-scale"></i> Unit</label>
-                    <select name="unit" id="unit">
+                    <select name="unit" id="unit" class="js-select">
                         <option value="">Select unit</option>
                         @foreach($units as $unit)
                             <option value="{{ $unit->name }}" {{ old('unit') == $unit->name ? 'selected' : '' }}>
@@ -69,8 +72,18 @@
                         <p class="text-danger mt-1">{{ $message }}</p>
                     @enderror
                 </div>
+            </div>
 
-
+            <div class="form-row">
+                <div class="form-group" style="width:100%;">
+                    <label for="description"><i class="fas fa-align-left"></i> Description</label>
+                    <textarea id="description" name="description" rows="4" maxlength="1000"
+                              placeholder="Enter description (optional)"
+                              style="height: 120px; resize: none;">{{ old('description') }}</textarea>
+                    @error('description')
+                        <p class="text-danger mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
             </div>
 
             <div>

@@ -1219,13 +1219,12 @@
 
             {{-- Customer (loyalty) — mobile drawer --}}
             <div class="customer-pick">
-                <label for="drawerCustomer"><i class="fas fa-mug-hot"></i> Customer (loyalty)</label>
-                <select id="drawerCustomer" onchange="syncCustomer(this.value)">
-                    <option value="">Walk-in (no card)</option>
-                    @foreach ($customers as $c)
-                        <option value="{{ $c->id }}">{{ $c->name }} · {{ $c->phone }}</option>
-                    @endforeach
-                </select>
+                <label for="drawerCustomerSearch"><i class="fas fa-mug-hot"></i> Customer (loyalty)</label>
+                <input type="text" id="drawerCustomerSearch" list="customerList"
+                    placeholder="Walk-in — search name / phone..."
+                    autocomplete="off"
+                    style="width:100%;padding:9px 14px;border:1px solid var(--c-border);border-radius:24px;font-size:13px;"
+                    oninput="pickCustomerByText(this.value)">
             </div>
 
             {{-- Payment method --}}

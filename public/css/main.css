@@ -3,22 +3,22 @@
 ============================================= */
 :root {
     /* Browns */
-    --brown-900: #36241a;   /* darkest */
-    --brown-700: #4A3326;   /* main / sidebar */
-    --brown-650: #5a3d2d;   /* button stripe */
-    --brown-600: #543a2b;   /* stripe light */
-    --brown-500: #6e432a;   /* hover */
-    --brown-text: #5c4636;  /* muted text / labels */
-    --ink: #2b1b12;         /* text on caramel */
+    --brown-900: #36241a; /* darkest */
+    --brown-700: #4a3326; /* main / sidebar */
+    --brown-650: #5a3d2d; /* button stripe */
+    --brown-600: #543a2b; /* stripe light */
+    --brown-500: #6e432a; /* hover */
+    --brown-text: #5c4636; /* muted text / labels */
+    --ink: #2b1b12; /* text on caramel */
 
     /* Caramel accents */
-    --caramel: #c8955a;     /* accent / active */
-    --caramel-d: #a8763f;   /* accent dark */
-    --caramel-dd: #8a5a34;  /* accent darkest */
+    --caramel: #c8955a; /* accent / active */
+    --caramel-d: #a8763f; /* accent dark */
+    --caramel-dd: #8a5a34; /* accent darkest */
 
     /* Creams / backgrounds */
-    --cream: #fbf3ea;       /* light bg */
-    --cream-page: #f7f0e8;  /* page bg */
+    --cream: #fbf3ea; /* light bg */
+    --cream-page: #f7f0e8; /* page bg */
     --cream-soft: #fffaf6;
     --cream-field: #fcf7f1;
     --cream-th: #f1e3d3;
@@ -109,7 +109,9 @@ a {
     color: var(--white);
     text-decoration: none;
     border-radius: 50px;
-    transition: background-color 0.2s ease, padding 0.2s ease;
+    transition:
+        background-color 0.2s ease,
+        padding 0.2s ease;
     cursor: pointer;
 }
 
@@ -219,14 +221,26 @@ a {
     background: var(--cream-page);
 }
 .main-content {
-    background: repeating-linear-gradient(-45deg, var(--cream), var(--white), var(--cream) 3px, var(--white) 3px);
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--cream),
+        var(--white),
+        var(--cream) 3px,
+        var(--white) 3px
+    );
     flex: 1;
     padding: 1rem;
     overflow-y: auto;
 }
 
 .content-section {
-    background: repeating-linear-gradient(-45deg, var(--white), var(--cream-soft), var(--white) 3px, var(--cream-soft) 3px);
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--white),
+        var(--cream-soft),
+        var(--white) 3px,
+        var(--cream-soft) 3px
+    );
     padding: 1.5rem;
     border-radius: 8px;
     box-shadow: var(--shadow-brown);
@@ -394,7 +408,9 @@ a {
         var(--green-d) 3px
     );
     color: var(--white);
-    transition: 0.3s ease, transform 0.2s ease;
+    transition:
+        0.3s ease,
+        transform 0.2s ease;
     float: left;
     margin-top: 5px;
 }
@@ -402,7 +418,13 @@ a {
     width: 45%;
     border-left: 5px solid var(--red) !important;
     border-right: 5px solid var(--red) !important;
-    background: repeating-linear-gradient(-45deg, var(--red), var(--red-d), var(--red) 3px, var(--red-d) 3px);
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--red),
+        var(--red-d),
+        var(--red) 3px,
+        var(--red-d) 3px
+    );
     color: var(--white);
     transition:
         0.3s ease,
@@ -444,7 +466,13 @@ a {
     gap: 8px;
     min-width: 120px;
     padding: 10px 20px;
-    background: repeating-linear-gradient(-45deg, var(--red), var(--red-d), var(--red) 3px, var(--red-d) 3px);
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--red),
+        var(--red-d),
+        var(--red) 3px,
+        var(--red-d) 3px
+    );
     color: var(--white);
     font-size: 14px;
     font-weight: 600;
@@ -780,7 +808,13 @@ label {
     top: 20px;
     right: 20px;
     min-width: 300px;
-    background: repeating-linear-gradient(-45deg, var(--green), var(--green-d), var(--green) 3px, var(--green-d) 3px);
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--green),
+        var(--green-d),
+        var(--green) 3px,
+        var(--green-d) 3px
+    );
     border-radius: 8px;
     box-shadow: 0 10px 30px rgba(54, 36, 26, 0.2);
     overflow: hidden;
@@ -819,7 +853,101 @@ label {
     background: var(--caramel);
     animation: progressAnim 4s linear forwards;
 }
+.cs {
+    position: relative;
+    background: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+.cs-native {
+    display: none;
+}
 
+.cs-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 40px 12px 16px;
+    font: inherit;
+    color: #222;
+    background: #fff;
+    border: 2px solid var(--border-input);
+    border-radius: 8px;
+    transition: border-color 0.15s;
+}
+.cs-input::placeholder {
+    color: #888;
+}
+.cs-input:focus,
+.cs.open .cs-input {
+    outline: none;
+    border-color: #a67c52;
+}
+
+/* ព្រួញ (input មិនអាចមាន ::after បានទេ ដូច្នេះដាក់លើ wrapper) */
+.cs::after {
+    content: "";
+    position: absolute;
+    right: 16px;
+    top: 24px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #a67c52;
+    border-bottom: 2px solid #a67c52;
+    transform: translateY(-70%) rotate(45deg);
+    transition: transform 0.2s;
+    pointer-events: none;
+}
+.cs.open::after {
+    transform: translateY(-30%) rotate(225deg);
+}
+
+.cs-list {
+    overflow-y: auto;
+    max-height: 400px;
+    overscroll-behavior: contain;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #e6d9c8;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+    z-index: 1000;
+    display: none;
+}
+.cs.open .cs-list {
+    display: block;
+}
+.cs-list li {
+    padding: 10px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: #333;
+}
+.cs-list li.placeholder {
+    color: #999;
+}
+.cs-list li:hover,
+.cs-list li.active {
+    background: #f6ece0;
+}
+.cs-list li.selected {
+    background: #a67c52;
+    color: #fff;
+}
+.cs-list li.hidden {
+    display: none;
+}
+.cs-empty {
+    padding: 10px 12px;
+    color: #999;
+    display: none;
+}
 /* Badges */
 .status-active {
     background-color: var(--green);

@@ -7,6 +7,7 @@
 @section('headerBlock')
     <link rel="stylesheet" href="{{ URL::asset('css/main.css') }}">
     <script src="{{ URL::asset('js/form.js') }}"></script>
+    <script src="{{ URL::asset('js/main.js') }}" defer></script>
     <style>
         #loading-overlay {
             position: fixed;
@@ -28,19 +29,15 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         #loading-text { margin-top: 15px; font-size: 16px; color: #333; }
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0 1.5rem;
+        .error-summary {
+            background: #fdecea;
+            border: 1px solid #f5c2c0;
+            color: #b71c1c;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
         }
-        .form-grid .form-group-full {
-            grid-column: 1 / -1;
-        }
-        @media (max-width: 600px) {
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+        .error-summary ul { margin: 0; padding-left: 18px; }
     </style>
 @endsection
 
@@ -68,6 +65,17 @@
         </a>
         <h2><i class="fas fa-user-plus"></i> Add New Customer</h2>
 
+        {{-- Show ALL validation errors (helps find hidden problems) --}}
+        {{-- @if ($errors->any())
+            <div class="error-summary">
+                <ul>
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif --}}
+
         <form id="customerForm" action="{{ route('customers.store') }}" method="POST">
             @csrf
 
@@ -75,7 +83,7 @@
                 {{-- Customer Name --}}
                 <div class="form-group">
                     <label for="name"><i class="fas fa-user"></i> Customer Name:</label>
-                    <input id="name" type="text" name="name" placeholder="Enter customer name" value="{{ old('name') }}">
+                    <input id="name" type="text" name="name" placeholder="Customer name" value="{{ old('name') }}">
                     @error('name')
                     <p class="text-danger mt-1">{{ $message }}</p>
                     @enderror
@@ -84,7 +92,7 @@
                 {{-- Gender --}}
                 <div class="form-group">
                     <label for="gender"><i class="fas fa-venus-mars"></i> Gender:</label>
-                    <select id="gender" name="gender">
+                    <select id="gender" name="gender" class="js-select">
                         <option value="">Select Gender</option>
                         <option value="male"   {{ old('gender') == 'male'   ? 'selected' : '' }}>Male</option>
                         <option value="female" {{ old('gender') == 'female' ? 'selected' : '' }}>Female</option>
@@ -99,16 +107,16 @@
                 {{-- Phone --}}
                 <div class="form-group">
                     <label for="phone"><i class="fas fa-phone"></i> Phone:</label>
-                    <input id="phone" type="text" name="phone" placeholder="Enter phone number" value="{{ old('phone') }}">
+                    <input id="phone" type="text" name="phone" placeholder="(+_ _ _) _ _  _ _ _  _ _ _" value="{{ old('phone') }}">
                     @error('phone')
                     <p class="text-danger mt-1">{{ $message }}</p>
                     @enderror
                 </div>
 
                 {{-- Email --}}
-                <div class="form-group form-group-full">
+                <div class="form-group">
                     <label for="email"><i class="fas fa-envelope"></i> Email:</label>
-                    <input id="email" type="email" name="email" placeholder="Enter email address" value="{{ old('email') }}">
+                    <input id="email" type="email" name="email" placeholder="example@gmail.com" value="{{ old('email') }}">
                     @error('email')
                     <p class="text-danger mt-1">{{ $message }}</p>
                     @enderror
@@ -119,7 +127,7 @@
                 {{-- Password --}}
                 <div class="form-group">
                     <label for="password"><i class="fas fa-lock"></i> Password:</label>
-                    <input id="password" type="password" name="password" placeholder="Enter password" autocomplete="new-password">
+                    <input id="password" type="password" name="password" placeholder="Password" autocomplete="new-password">
                     @error('password')
                     <p class="text-danger mt-1">{{ $message }}</p>
                     @enderror
@@ -131,20 +139,18 @@
                     <input id="password_confirmation" type="password" name="password_confirmation" placeholder="Confirm password" autocomplete="new-password">
                 </div>
             </div>
-
-            {{-- Status --}}
-{{--            <div class="form-row">--}}
-{{--                <div class="form-group">--}}
-{{--                    <label for="status"><i class="fas fa-toggle-on"></i> Status:</label>--}}
-{{--                    <select id="status" name="status">--}}
-{{--                        <option value="inactive" {{ old('status') == 'inactive' ? 'selected' : '' }}>Inactive</option>--}}
-{{--                    </select>--}}
-{{--                    @error('status')--}}
-{{--                    <p class="text-danger mt-1">{{ $message }}</p>--}}
-{{--                    @enderror--}}
-{{--                </div>--}}
-{{--            </div>--}}
-
+            <div class="form-row">
+                {{-- Description --}}
+                <div class="form-group" style="width:100%;">
+                    <label for="description"><i class="fas fa-align-left"></i> Description:</label>
+                    <textarea id="description" name="description" rows="4" maxlength="1000"
+                            placeholder="Enter description (optional)"
+                            style="height: 120px; resize: none;">{{ old('description') }}</textarea>
+                    @error('description')
+                    <p class="text-danger mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+            </div>
             <div>
                 <button type="submit" class="btn btn-success">
                     <i class="fas fa-save"></i> Save
@@ -175,6 +181,7 @@
         document.getElementById('cancelBtn').addEventListener('click', function() {
             document.getElementById('customerForm').reset();
         });
+        
     </script>
 
 @endsection

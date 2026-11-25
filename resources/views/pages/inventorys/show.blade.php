@@ -42,6 +42,13 @@
             margin-bottom: 10px;
         }
 
+        .info-row-full {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
         .info-box {
             padding: 14px 18px;
             border-radius: 10px;
@@ -126,7 +133,7 @@
 
         <h2><i class="fas fa-boxes"></i> Inventory Item Details</h2><br>
 
-        {{-- Row 1: Name & Type --}}
+        {{-- Row 1: Name & Quantity --}}
         <div class="info-row">
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-tag"></i> Item Name</div>
@@ -136,10 +143,9 @@
                 <div class="info-label"><i class="fas fa-cubes"></i> Quantity</div>
                 <div class="info-value">{{ $item->qty }}</div>
             </div>
-
         </div>
 
-        {{-- Row 2: Unit, Price, Qty --}}
+        {{-- Row 2: Price & Unit --}}
         <div class="info-row">
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-dollar-sign"></i> Price</div>
@@ -150,6 +156,8 @@
                 <div class="info-value">{{ $item->unit ?? '-' }}</div>
             </div>
         </div>
+
+        {{-- Row 3: Type & Status --}}
         <div class="info-row">
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-layer-group"></i> Type</div>
@@ -168,11 +176,20 @@
                 </div>
             </div>
         </div>
-        {{-- Row 3: Created At & Last Updated --}}
+
+        {{-- Description --}}
+        <div class="info-row-full">
+            <div class="info-box">
+                <div class="info-label"><i class="fas fa-align-left"></i> Description</div>
+                <div class="info-value" style="white-space: pre-line;">{{ $item->description ?: '-' }}</div>
+            </div>
+        </div>
+
+        {{-- Row 4: Created At & Created By --}}
         <div class="info-row">
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-calendar-plus"></i> Created At</div>
-                <div class="info-value">{{ $item->created_at ? $item->created_at->timezone('Asia/Phnom_Penh')->format('Y-m-d H:i \a\t g:i A') : 'N/A' }}</div>
+                <div class="info-value">{{ $item->created_at ? $item->created_at->timezone('Asia/Phnom_Penh')->format('Y-m-d \a\t g:i A') : 'N/A' }}</div>
             </div>
 
             <div class="info-box">
@@ -181,11 +198,11 @@
             </div>
         </div>
 
-        {{-- Row 4: Last Updated & Last Updated By --}}
+        {{-- Row 5: Last Updated & Last Updated By --}}
         <div class="info-row">
             <div class="info-box">
                 <div class="info-label"><i class="fas fa-clock"></i> Last Updated At</div>
-                <div class="info-value">{{ $item->updated_at ? $item->updated_at->format('Y-M-d \a\t g:i A') : 'N/A' }}</div>
+                <div class="info-value">{{ $item->updated_at ? $item->updated_at->timezone('Asia/Phnom_Penh')->format('Y-m-d \a\t g:i A') : 'N/A' }}</div>
             </div>
 
             <div class="info-box">
